@@ -3,6 +3,7 @@
 #include <random>
 #include <thread>
 #include <unistd.h>
+#include <cstdlib>
 
 std::atomic<bool> terminate;
 
@@ -14,20 +15,51 @@ const int N = 4; // number of processors
 
 DQueue job_queue[N];
 
+
+
+int getRandomProcessor(int me)
+{
+  int stealFrom = rand() % N;
+  if (stealFrom == me) return getRandomProcessor(me);
+  return stealFrom;
+}
+
+int steel(int me)
+{
+  int stealFrom = getRandomProcessor(me);
+  __transaction_relaxed {
+    int stolen = job_queue[stealFrom].PopRight();
+    if (stolen == 0) {
+      job_queue[stealFrom].PushRight(0);
+      return 0;
+    }
+    else if (stolen == -1) return 0;
+    else {
+      printf("Process %i is stealing from %i with a workload %i\n", me,stealFrom,stolen);
+      return stolen;
+    }
+  }
+}
+
 void processor(int n)
 {
   while (!terminate)
   {
     // TODO
-    __transaction_relaxed {
-      int poped = job_queue[n].PopLeft();
-      if (poped >= 0) {
-        sleep(poped);
-      }
+    int poped = job_queue[n].PopLeft();
+    if (poped >= 0) {
+      printf("%i poped: %i\n",n, poped);
+      sleep(poped);
+    } else {
+      int stolen = steel(n);
+      if(stolen > 0) printf("%i sleeping %i (stolen)\n", n, stolen);
+      sleep(stolen);
     }
+
 
   }
 }
+
 
 ////////////////////////////////////////////////////////////////////////////////
 
