@@ -7,6 +7,7 @@ int main() {
     __transaction_atomic {
       a = 1;
       throw 1337;
+      a = 2;
     }
   } catch (int e) {
 
