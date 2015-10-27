@@ -2,7 +2,7 @@
 
 
 int main() {
-  int i = 0;
+  int i = 0, j = 0;
 
   __transaction_atomic {
     
@@ -11,26 +11,22 @@ int main() {
       __transaction_cancel;
     }
 
-    //if closed, this transaction will not commit before the next if-statement
-    __transaction_atomic {
-      i = 3;
-    }
-
-    if (i == 3) {
-      //prevoius transaction commited and visible = open schemantics
-      i = 1;
-    } else {
-      //i still 0, previous transaction still not comitted, closed schemantics
-      i = 2;
-    }
-    
+    i = 1;
   }
 
-  printf("%i\n", i);
+  __transaction_atomic {
+    __transaction_atomic {
+      j = 1;
+    }
 
-  //i == 0: flattened
-  //i == 1: open
-  //i == 2: closed
+    __transaction_cancel;
+  }
+
+  printf("i: %i, j: %i\n", i, j);
+
+  //i == 0: flat semantics
+  //i == 1 && j == 0: closed semantics
+  //i == 1 && j == 1: open semantics
   
   return 0;
 }
