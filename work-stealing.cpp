@@ -24,7 +24,7 @@ int getRandomProcessor(int me)
   return stealFrom;
 }
 
-int steel(int me)
+int steal(int me)
 {
   int stealFrom = getRandomProcessor(me);
   __transaction_relaxed {
@@ -51,7 +51,7 @@ void processor(int n)
       printf("%i poped: %i\n",n, poped);
       sleep(poped);
     } else {
-      int stolen = steel(n);
+      int stolen = steal(n);
       if(stolen > 0) printf("%i sleeping %i (stolen)\n", n, stolen);
       sleep(stolen);
     }
