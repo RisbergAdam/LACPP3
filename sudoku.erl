@@ -10,7 +10,7 @@
 %% -------------------------------------------------------------------
 -module(sudoku).
 
--export([benchmarks/0,benchmarks_parallel/0 , solve_all/0 ,solve/1, solve_parallel/1,loop/1, w/0, wp/0, intersect_row/2, intersect/2]).
+-export([benchmarks/0,benchmarks_parallel/0 , solve_all/0 ,solve/1, solve_parallel/1, solve_all_parallel/0 ,loop/1, w/0, wp/0, intersect_row/2, intersect/2]).
 
 -ifdef(PROPER).
 -include_lib("proper/include/proper.hrl").
