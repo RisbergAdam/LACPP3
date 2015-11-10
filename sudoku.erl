@@ -10,7 +10,7 @@
 %% -------------------------------------------------------------------
 -module(sudoku).
 
--export([benchmarks/0,benchmarks_par/0 , solve_all/0, solve/1, loop/1, wildcat/0, wildcat_p/0]).
+-export([benchmarks/0,benchmarks_par/0 , solve_all/0, solve/1, loop/1, w/0, wp/0, intersect_row/2, intersect/2]).
 
 -ifdef(PROPER).
 -include_lib("proper/include/proper.hrl").
@@ -30,12 +30,12 @@
 
 %& parallel wildcat solve
 
-wildcat_p() ->
+wp() ->
   {ok, Puzzles} = file:consult("sudoku_problems.txt"),
   [Wildcat] = [Puzzle || {wildcat, Puzzle} <- Puzzles],
-  timer:tc(fun() -> solve_parallel(Wildcat) end).
+  solve_parallel(Wildcat).
 
-wildcat() ->
+w() ->
   {ok, Puzzles} = file:consult("sudoku_problems.txt"),
   [Wildcat] = [Puzzle || {wildcat, Puzzle} <- Puzzles],
   timer:tc(fun() -> solve(Wildcat) end).
@@ -55,7 +55,7 @@ benchmarks() ->
 
 -spec benchmarks([puzzle()]) -> bm_results().
 benchmarks(Puzzles) ->
-  [{Name, bm(fun() -> solve_parallel(M) end)} || {Name, M} <- Puzzles].
+  [{Name, bm(fun() -> solve(M) end)} || {Name, M} <- Puzzles].
 
 benchmarks_par() ->
   timer:tc(fun () -> bm(fun()->solve_all()end) end).
@@ -101,8 +101,7 @@ solve_parallel(M) ->
       Solution;
     false -> % in correct puzzles should never happen
       exit({invalid_solution, Solution})
-  end.  
-
+  end.
 
 %%
 %% solve a Sudoku puzzle
@@ -176,20 +175,66 @@ fill(M) ->
 %% refine but parallel
 
 refine_parallel(M) ->
-  NewM =
-    refine_rows_parallel(
-      transpose(
-	refine_rows_parallel(
-	  transpose(
-	    unblocks(
-	      refine_rows_parallel(
-		blocks(M))))))),
-  if M =:= NewM ->
-      M;
+  Parent = self(),
+  spawn_link(fun() -> Parent ! {rows, refine_rows_parallel(M)} end),
+  spawn_link(fun() -> Parent ! {cols, transpose(refine_rows_parallel(transpose(M)))} end),
+  spawn_link(fun() -> Parent ! {blocks, unblocks(refine_rows_parallel(blocks(M)))} end),
+  Rows = receive {rows, R} -> R end,
+  Cols = receive {cols, C} -> C end,
+  Blocks = receive {blocks, B} -> B end,
+  intersect_rows(Blocks, intersect_rows(Rows, Cols)).
+
+intersect_rows([A], [B]) ->
+  [intersect_row(A, B)];
+intersect_rows([A|Ta], [B|Tb]) ->
+  [intersect_row(A, B) | intersect_rows(Ta, Tb)].
+
+intersect_row([A], [B]) ->
+  [intersect(A, B)];
+intersect_row([A|Ta], [B|Tb]) ->
+  [intersect(A, B) | intersect_row(Ta, Tb)].
+
+
+intersect(A, B) ->
+  if is_list(A) ->
+      [C || C <- A, in(C, B)];
      true ->
-      refine_parallel(NewM)
+      InList = in(A, B),
+      if InList ->
+	  [A];
+	 true ->
+	  []
+      end
   end.
-  
+
+in(_, []) ->
+  false;
+in(X, [A|T]) ->
+  if X == A ->
+      true;
+     true ->
+	in(X, T)
+  end;
+in(A, B) ->
+  A == B.
+
+
+%refine_parallel(M) ->
+%  NewM =
+%    refine_rows_parallel(
+%      transpose(
+%	refine_rows_parallel(
+%	  transpose(
+%	    unblocks(
+%	      refine_rows_parallel(
+%		blocks(M))))))),
+%  if M =:= NewM ->
+%      M;
+%     true ->
+%      refine_parallel(NewM)
+%  end.
+
+
 
 %% refine entries which are lists by removing numbers they are known
 %% not to be
