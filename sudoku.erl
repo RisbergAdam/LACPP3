@@ -55,10 +55,15 @@ benchmarks() ->
 
 -spec benchmarks([puzzle()]) -> bm_results().
 benchmarks(Puzzles) ->
-  [{Name, bm(fun() -> solve_parallel(M) end), io:format("~w\n", [[Name]])} || {Name, M} <- Puzzles].
+  [{Name, bm(fun() -> solve(M) end), io:format("~w\n", [[Name]])} || {Name, M} <- Puzzles].
 
 benchmarks_parallel() ->
-  timer:tc(fun () -> bm(fun()->solve_all_parallel()end) end).
+  {ok, Problems} = file:consult(?PROBLEMS),
+  timer:tc(fun () -> benchmarks_parallel(Problems) end).
+
+benchmarks_parallel(Puzzles) ->
+  [{Name, bm(fun() -> solve_parallel(M) end), io:format("~w\n", [[Name]])} || {Name, M} <- Puzzles].
+
 
   
 
@@ -76,20 +81,6 @@ loop(Nr) ->
     receive 
       {Name, Solve} -> %io:format("~p ~n", [{Name, Solve}]),
       loop(Nr-1)
-  end.
-
-
-%%
-%% solve a sudoku puzzle in parallel
-%%
-
-solve_parallel(M) ->
-  Solution = solve_refined_parallel(refine_parallel(fill(M))),
-  case valid_solution(Solution) of
-    true ->
-      Solution;
-    false -> % in correct puzzles should never happen
-      exit({invalid_solution, Solution})
   end.
 
 
@@ -112,6 +103,18 @@ solve_all() ->
   [{Name, solve(M)} || {Name, M} <- Puzzles].
 
                                      
+%%
+%% solve a sudoku puzzle in parallel
+%%
+
+solve_parallel(M) ->
+  Solution = solve_refined_parallel(refine_parallel(fill(M))),
+  case valid_solution(Solution) of
+    true ->
+      Solution;
+    false -> % in correct puzzles should never happen
+      exit({invalid_solution, Solution})
+  end.
 
 
 %%
@@ -136,8 +139,7 @@ solve_refined(M) ->
   end.
 
 
-
-  solve_refined_parallel(M) ->
+solve_refined_parallel(M) ->
   case solved(M) of
     true ->
       M;
