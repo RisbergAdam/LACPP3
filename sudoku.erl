@@ -10,7 +10,7 @@
 %% -------------------------------------------------------------------
 -module(sudoku).
 
--export([benchmarks/0,benchmarks_par/0 , solve_all/0, solve/1, loop/1, w/0, wp/0, intersect_row/2, intersect/2]).
+-export([benchmarks/0,benchmarks_parallel/0 , solve_all/0 ,solve/1, solve_parallel/1,loop/1, w/0, wp/0, intersect_row/2, intersect/2]).
 
 -ifdef(PROPER).
 -include_lib("proper/include/proper.hrl").
@@ -57,8 +57,8 @@ benchmarks() ->
 benchmarks(Puzzles) ->
   [{Name, bm(fun() -> solve_parallel(M) end), io:format("~w\n", [[Name]])} || {Name, M} <- Puzzles].
 
-benchmarks_par() ->
-  timer:tc(fun () -> bm(fun()->solve_all()end) end).
+benchmarks_parallel() ->
+  timer:tc(fun () -> bm(fun()->solve_all_parallel()end) end).
 
   
 
@@ -78,11 +78,26 @@ loop(Nr) ->
       loop(Nr-1)
   end.
 
+
+%%
+%% solve a sudoku puzzle in parallel
+%%
+
+solve_parallel(M) ->
+  Solution = solve_refined_parallel(refine_parallel(fill(M))),
+  case valid_solution(Solution) of
+    true ->
+      Solution;
+    false -> % in correct puzzles should never happen
+      exit({invalid_solution, Solution})
+  end.
+
+
 %%
 %% solve all puzzles in the (hardcoded) input file
 %%
--spec solve_all() -> [{name(), solution()}].
-solve_all() ->
+-spec solve_all_parallel() -> [{name(), solution()}].
+solve_all_parallel() ->
   {ok, Puzzles} = file:consult(?PROBLEMS),
   Par = self(),
   L1 = [{Name, spawn_link(fun () ->
@@ -90,18 +105,14 @@ solve_all() ->
         end)} || {Name, M} <- Puzzles],
   loop(length(L1)).
                                      
-%%
-%% solve a sudoku puzzle in parallel
-%%
 
-solve_parallel(M) ->
-  Solution = solve_refined(refine_parallel(fill(M))),
-  case valid_solution(Solution) of
-    true ->
-      Solution;
-    false -> % in correct puzzles should never happen
-      exit({invalid_solution, Solution})
-  end.
+-spec solve_all() -> [{name(), solution()}].
+solve_all() ->
+  {ok, Puzzles} = file:consult(?PROBLEMS),
+  [{Name, solve(M)} || {Name, M} <- Puzzles].
+
+                                     
+
 
 %%
 %% solve a Sudoku puzzle
@@ -122,6 +133,16 @@ solve_refined(M) ->
       M;
     false ->
       solve_one(guesses(M))
+  end.
+
+
+
+  solve_refined_parallel(M) ->
+  case solved(M) of
+    true ->
+      M;
+    false ->
+      solve_one(guesses_parallel(M))
   end.
 
 solve_one([]) ->
@@ -177,8 +198,8 @@ fill(M) ->
 refine_parallel(M) ->
   Parent = self(),
   spawn_link(fun() -> Parent ! {rows, refine_rows(M)} end),
-  spawn_link(fun() -> Parent ! {cols, transpose(refine_rows(transpose(M)))} end),
-  spawn_link(fun() -> Parent ! {blocks, unblocks(refine_rows(blocks(M)))} end),
+  spawn_link(fun() -> Parent ! {cols, transpose(refine_rows_parallel(transpose(M)))} end),
+  spawn_link(fun() -> Parent ! {blocks, unblocks(refine_rows_parallel(blocks(M)))} end),
   Rows = receive {rows, R} -> R end,
   Cols = receive {cols, C} -> C end,
   Blocks = receive {blocks, B} -> B end,
@@ -361,9 +382,15 @@ guess(M) ->
 %% given a matrix, guess an element to form a list of possible
 %% extended matrices, easiest problem first.
 
-guesses(M0) ->
+guesses_parallel(M0) ->
   {I, J, Guesses} = guess(M0),
   Ms = [refine_parallel(update_element(M0, I, J, G)) || G <- Guesses],
+  SortedGuesses = lists:sort([{hard(M), M} || M <- Ms, not is_wrong(M)]),
+  [G || {_, G} <- SortedGuesses].
+
+guesses(M0) ->
+  {I, J, Guesses} = guess(M0),
+  Ms = [refine(update_element(M0, I, J, G)) || G <- Guesses],
   SortedGuesses = lists:sort([{hard(M), M} || M <- Ms, not is_wrong(M)]),
   [G || {_, G} <- SortedGuesses].
 
