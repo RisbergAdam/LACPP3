@@ -32,12 +32,12 @@
 
 wp() ->
   {ok, Puzzles} = file:consult("sudoku_problems.txt"),
-  [Wildcat] = [Puzzle || {wildcat, Puzzle} <- Puzzles],
-  solve_parallel(Wildcat).
+  [Wildcat] = [Puzzle || {climbing_everest, Puzzle} <- Puzzles],
+  timer:tc(fun() -> solve_parallel(Wildcat) end).
 
 w() ->
   {ok, Puzzles} = file:consult("sudoku_problems.txt"),
-  [Wildcat] = [Puzzle || {wildcat, Puzzle} <- Puzzles],
+  [Wildcat] = [Puzzle || {climbing_everest, Puzzle} <- Puzzles],
   timer:tc(fun() -> solve(Wildcat) end).
 
 
@@ -55,7 +55,7 @@ benchmarks() ->
 
 -spec benchmarks([puzzle()]) -> bm_results().
 benchmarks(Puzzles) ->
-  [{Name, bm(fun() -> solve(M) end)} || {Name, M} <- Puzzles].
+  [{Name, bm(fun() -> solve_parallel(M) end), io:format("~w\n", [[Name]])} || {Name, M} <- Puzzles].
 
 benchmarks_par() ->
   timer:tc(fun () -> bm(fun()->solve_all()end) end).
@@ -176,14 +176,23 @@ fill(M) ->
 
 refine_parallel(M) ->
   Parent = self(),
-  spawn_link(fun() -> Parent ! {rows, refine_rows_parallel(M)} end),
-  spawn_link(fun() -> Parent ! {cols, transpose(refine_rows_parallel(transpose(M)))} end),
-  spawn_link(fun() -> Parent ! {blocks, unblocks(refine_rows_parallel(blocks(M)))} end),
+  spawn_link(fun() -> Parent ! {rows, refine_rows(M)} end),
+  spawn_link(fun() -> Parent ! {cols, transpose(refine_rows(transpose(M)))} end),
+  spawn_link(fun() -> Parent ! {blocks, unblocks(refine_rows(blocks(M)))} end),
   Rows = receive {rows, R} -> R end,
   Cols = receive {cols, C} -> C end,
   Blocks = receive {blocks, B} -> B end,
-  intersect_rows(Blocks, intersect_rows(Rows, Cols)).
+  NewM = intersect_rows(Blocks, intersect_rows(Rows, Cols)),
+  if M =:= NewM ->
+      refine(M);
+     true ->
+      refine_parallel(NewM)
+  end.
 
+intersect_rows(no_solution, _) ->
+  no_solution;
+intersect_rows(_, no_solution) ->
+  no_solution;
 intersect_rows([A], [B]) ->
   [intersect_row(A, B)];
 intersect_rows([A|Ta], [B|Tb]) ->
@@ -354,7 +363,7 @@ guess(M) ->
 
 guesses(M0) ->
   {I, J, Guesses} = guess(M0),
-  Ms = [refine(update_element(M0, I, J, G)) || G <- Guesses],
+  Ms = [refine_parallel(update_element(M0, I, J, G)) || G <- Guesses],
   SortedGuesses = lists:sort([{hard(M), M} || M <- Ms, not is_wrong(M)]),
   [G || {_, G} <- SortedGuesses].
 
