@@ -55,7 +55,7 @@ benchmarks() ->
 
 -spec benchmarks([puzzle()]) -> bm_results().
 benchmarks(Puzzles) ->
-  [{Name, bm(fun() -> solve(M) end)} || {Name, M} <- Puzzles].
+  [{Name, bm(fun() -> solve_parallel(M) end)} || {Name, M} <- Puzzles].
 
 benchmarks_par() ->
   timer:tc(fun () -> bm(fun()->solve_all()end) end).
@@ -187,7 +187,7 @@ refine_parallel(M) ->
   if M =:= NewM ->
       M;
      true ->
-      refine(NewM)
+      refine_parallel(NewM)
   end.
   
 
