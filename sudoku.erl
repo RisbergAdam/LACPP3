@@ -10,7 +10,7 @@
 %% -------------------------------------------------------------------
 -module(sudoku).
 
--export([benchmarks/0,benchmarks_par/0 , solve_all/0, solve/1, loop/1]).
+-export([benchmarks/0,benchmarks_par/0 , solve_all/0, solve/1, loop/1, wildcat/0, wildcat_p/0]).
 
 -ifdef(PROPER).
 -include_lib("proper/include/proper.hrl").
@@ -27,6 +27,19 @@
 
 -type solution()   :: matrix() | 'no_solution'.
 -type bm_results() :: [{name(), float()}].
+
+%& parallel wildcat solve
+
+wildcat_p() ->
+  {ok, Puzzles} = file:consult("sudoku_problems.txt"),
+  [Wildcat] = [Puzzle || {wildcat, Puzzle} <- Puzzles],
+  timer:tc(fun() -> solve_parallel(Wildcat) end).
+
+wildcat() ->
+  {ok, Puzzles} = file:consult("sudoku_problems.txt"),
+  [Wildcat] = [Puzzle || {wildcat, Puzzle} <- Puzzles],
+  timer:tc(fun() -> solve(Wildcat) end).
+
 
 %%
 %% benchmarking code
@@ -77,7 +90,18 @@ solve_all() ->
         end)} || {Name, M} <- Puzzles],
   loop(length(L1)).
                                      
+%%
+%% solve a sudoku puzzle in parallel
+%%
 
+solve_parallel(M) ->
+  Solution = solve_refined(refine_parallel(fill(M))),
+  case valid_solution(Solution) of
+    true ->
+      Solution;
+    false -> % in correct puzzles should never happen
+      exit({invalid_solution, Solution})
+  end.  
 
 
 %%
@@ -149,6 +173,24 @@ fill(M) ->
   Nine = ?NINE,
   [[case is_decided(X) of true -> X; false -> Nine end || X <- Row] || Row <- M].
 
+%% refine but parallel
+
+refine_parallel(M) ->
+  NewM =
+    refine_rows_parallel(
+      transpose(
+	refine_rows_parallel(
+	  transpose(
+	    unblocks(
+	      refine_rows_parallel(
+		blocks(M))))))),
+  if M =:= NewM ->
+      M;
+     true ->
+      refine(NewM)
+  end.
+  
+
 %% refine entries which are lists by removing numbers they are known
 %% not to be
 
@@ -167,6 +209,30 @@ refine(M) ->
       refine(NewM)
   end.
 
+%%refine rows but in  parallel
+
+loop_rows([{N, P}]) ->
+  receive
+    {N, Row} -> [Row]
+  end;
+loop_rows([{N, P} | T]) ->
+  receive
+    {N, Row} -> [Row | loop_rows(T)]
+  end.
+      
+
+refine_rows_parallel(no_solution) ->
+  no_solution;
+refine_rows_parallel(M) ->
+  Parent = self(),
+  Children = [{N, spawn_link(fun() -> Parent ! {N, refine_row(R)} end)}
+	      || {N, R} <- enumerate(M)],
+  Refined = loop_rows(Children),
+  case lists:member(no_solution, Refined) of
+    true -> no_solution;
+    false -> Refined
+  end.
+
 refine_rows(no_solution) ->
   no_solution;
 refine_rows(M) ->
@@ -175,6 +241,14 @@ refine_rows(M) ->
     true -> no_solution;
     false -> Refined
   end.
+
+enumerate(L) ->
+  enumerate(0, L).
+
+enumerate(N, [E]) ->
+  [{N, E}];
+enumerate(N, [E|T]) ->
+  [{N, E} | enumerate(N + 1, T)].
 
 refine_row(Row) ->
   Entries = entries(Row),
