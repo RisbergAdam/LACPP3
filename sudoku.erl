@@ -64,7 +64,8 @@ benchmarks_parallel() ->
 benchmarks_parallel(Puzzles) ->
   [{Name, bm(fun() -> solve_parallel(M) end), io:format("~w\n", [[Name]])} || {Name, M} <- Puzzles].
 
-
+benchmarks_all_parallel() ->
+  timer:tc(fun () -> bm(fun()->solve_all_parallel()end) end).
   
 
 bm(F) ->
